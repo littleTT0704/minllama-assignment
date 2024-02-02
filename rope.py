@@ -1,6 +1,7 @@
 from typing import Tuple
 import torch
 
+
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     """
     Helper function to reshape frequency tensor to have the same shape as the target tensor 'x'
@@ -22,6 +23,7 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     assert freqs_cis.shape == (x.shape[1], x.shape[-1])
     shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
     return freqs_cis.view(shape)
+
 
 def apply_rotary_emb(
     query: torch.Tensor,
@@ -57,18 +59,28 @@ def apply_rotary_emb(
     # You may also benefit from https://blog.eleuther.ai/rotary-embeddings/.
 
     # reshape xq and xk to match the complex representation
-    query_real, query_imag = query.float().reshape(query.shape[:-1] + (-1, 2)).unbind(-1)
+    query_real, query_imag = (
+        query.float().reshape(query.shape[:-1] + (-1, 2)).unbind(-1)
+    )
     key_real, key_imag = key.float().reshape(key.shape[:-1] + (-1, 2)).unbind(-1)
 
     # First, compute the trigonometric values in the second and fourth columns in
     # slide 22 (linked above).
+    theta = 1.0 / torch.pow(theta, torch.arange(0, head_dim, 2).float() / head_dim)
+    mtheta = torch.outer(torch.arange(seqlen).float(), theta)
+    cos = reshape_for_broadcast(torch.cos(mtheta), query_real)
+    sin = reshape_for_broadcast(torch.sin(mtheta), query_real)
 
     # Then, combine these trigonometric values with the tensors query_real, query_imag,
     # key_real, and key_imag.
+    query_odd = query_real * cos - query_imag * sin
+    query_even = query_real * sin + query_imag * cos
+    key_odd = key_real * cos - key_imag * sin
+    key_even = key_real * sin + key_imag * cos
 
-    raise NotImplementedError
-
-    query_out = None
-    key_out = None
+    query_out = (
+        torch.stack((query_odd, query_even), dim=-1).reshape(query.shape).to(device)
+    )
+    key_out = torch.stack((key_odd, key_even), dim=-1).reshape(key.shape).to(device)
     # Return the rotary position embeddings for the query and key tensors
     return query_out, key_out
