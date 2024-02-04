@@ -104,8 +104,12 @@ class Attention(nn.Module):
         Make sure to use attention_dropout (self.attn_dropout) on the computed
         attention matrix before applying it to the value tensor.
         """
-        # todo
-        raise NotImplementedError
+        score = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.shape[-1])
+        attention = F.softmax(score, dim=-1)
+        attention = self.attn_dropout(attention)
+
+        output = torch.matmul(attention, value)
+        return output
 
     def forward(self, x: torch.Tensor):
         """
