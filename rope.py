@@ -51,10 +51,7 @@ def apply_rotary_emb(
         Tuple[torch.Tensor, torch.Tensor]: Tuple of modified query tensor and key tensor with rotary embeddings.
     """
 
-    _, seqlen, _, _ = query.shape
     device = query.device
-    # todo
-    #
     # Please refer to slide 22 in https://phontron.com/class/anlp2024/assets/slides/anlp-05-transformers.pdf.
     # You may also benefit from https://blog.eleuther.ai/rotary-embeddings/.
 
@@ -63,11 +60,13 @@ def apply_rotary_emb(
         query.float().reshape(query.shape[:-1] + (-1, 2)).unbind(-1)
     )
     key_real, key_imag = key.float().reshape(key.shape[:-1] + (-1, 2)).unbind(-1)
+    # This separates each query/key vector into its odd and even indices (assuming *one-indexing*).
+    # query_real contains q_1, q_3, q_5, ... and query_imag contains q_2, q_4, q_6, ...
 
     # First, compute the trigonometric values in the second and fourth columns in
     # slide 22 (linked above).
     theta = 1.0 / torch.pow(theta, torch.arange(0, head_dim, 2).float() / head_dim)
-    mtheta = torch.outer(torch.arange(seqlen).float(), theta)
+    mtheta = torch.outer(torch.arange(query.shape[1]).float(), theta)
     cos = reshape_for_broadcast(torch.cos(mtheta), query_real)
     sin = reshape_for_broadcast(torch.sin(mtheta), query_real)
 
