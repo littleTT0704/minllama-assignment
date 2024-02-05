@@ -66,7 +66,7 @@ def apply_rotary_emb(
     # First, compute the trigonometric values in the second and fourth columns in
     # slide 22 (linked above).
     theta = 1.0 / torch.pow(theta, torch.arange(0, head_dim, 2).float() / head_dim)
-    mtheta = torch.outer(torch.arange(query.shape[1]).float(), theta)
+    mtheta = torch.outer(torch.arange(query.shape[1]).float(), theta).to(device)
     cos = reshape_for_broadcast(torch.cos(mtheta), query_real)
     sin = reshape_for_broadcast(torch.sin(mtheta), query_real)
 
@@ -77,9 +77,7 @@ def apply_rotary_emb(
     key_odd = key_real * cos - key_imag * sin
     key_even = key_real * sin + key_imag * cos
 
-    query_out = (
-        torch.stack((query_odd, query_even), dim=-1).reshape(query.shape).to(device)
-    )
-    key_out = torch.stack((key_odd, key_even), dim=-1).reshape(key.shape).to(device)
+    query_out = torch.stack((query_odd, query_even), dim=-1).reshape(query.shape)
+    key_out = torch.stack((key_odd, key_even), dim=-1).reshape(key.shape)
     # Return the rotary position embeddings for the query and key tensors
     return query_out, key_out
