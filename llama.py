@@ -215,7 +215,7 @@ class LlamaLayer(nn.Module):
         # layer norm
         ffn_norm = self.ffn_norm(attention)
         # feed-forward network
-        y = x + self.feed_forward(ffn_norm)
+        y = attention + self.feed_forward(ffn_norm)
         return y
 
 
