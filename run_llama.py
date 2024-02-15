@@ -15,6 +15,7 @@ from optimizer import AdamW
 from tokenizer import Tokenizer
 from tqdm import tqdm
 from typing import Optional
+import loralib as lora
 
 
 TQDM_DISABLE=False
@@ -118,7 +119,7 @@ def model_eval(dataloader, model, device):
 
 def save_model(model, optimizer, args, config, filepath):
 	save_info = {
-		'model': model.state_dict(),
+		'model': lora.lora_state_dict(model) if args.lora else model.state_dict(),
 		'optim': optimizer.state_dict(),
 		'args': args,
 		'model_config': config,
@@ -151,7 +152,8 @@ def train(args):
 			  'pretrained_model_path': args.pretrained_model_path,
 			  'num_labels': num_labels,
 			  'data_dir': '.',
-			  'option': args.option}
+			  'option': args.option,
+			  'lora': args.lora}
 
 	config = SimpleNamespace(**config)
 
@@ -279,7 +281,7 @@ def test(args):
 		saved = torch.load(args.filepath)
 		config = saved['model_config']
 		model = LlamaEmbeddingClassifier(config)
-		model.load_state_dict(saved['model'])
+		model.load_state_dict(saved['model'], strict=not args.lora)
 		model = model.to(device)
 		print(f"load model from {args.filepath}")
 		tokenizer = Tokenizer(args.max_sentence_len)
@@ -315,6 +317,7 @@ def get_args():
 	parser.add_argument("--generated_sentence_high_temp_out", type=str, default="generated-sentence-temp-1.txt")
 	parser.add_argument("--dev_out", type=str, default="cfimdb-dev-prompting-output.txt")
 	parser.add_argument("--test_out", type=str, default="cfimdb-test-prompting-output.txt")
+	parser.add_argument("--lora", action='store_true')
 
 	# hyper parameters
 	parser.add_argument("--batch_size", help='sst: 64, cfimdb: 8 can fit a 12GB GPU', type=int, default=8)

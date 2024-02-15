@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from base_llama import LlamaPreTrainedModel, LlamaConfig
 from rope import apply_rotary_emb
 from utils import *
+import loralib as lora
 
 
 # Root Mean Square Layer Normalization (https://arxiv.org/abs/1910.07467)
@@ -75,15 +76,25 @@ class Attention(nn.Module):
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = config.dim // config.n_heads
         self.max_seq_len = config.max_seq_len
-        self.compute_query = nn.Linear(
-            config.dim, config.n_heads * self.head_dim, bias=False
-        )
+        if config.lora:
+            self.compute_query = lora.Linear(
+                config.dim, config.n_heads * self.head_dim, r=16
+            )
+        else:
+            self.compute_query = nn.Linear(
+                config.dim, config.n_heads * self.head_dim, bias=False
+            )
         self.compute_key = nn.Linear(
             config.dim, self.n_kv_heads * self.head_dim, bias=False
         )
-        self.compute_value = nn.Linear(
-            config.dim, self.n_kv_heads * self.head_dim, bias=False
-        )
+        if config.lora:
+            self.compute_value = lora.Linear(
+                config.dim, self.n_kv_heads * self.head_dim, r=16
+            )
+        else:
+            self.compute_value = nn.Linear(
+                config.dim, self.n_kv_heads * self.head_dim, bias=False
+            )
         self.compute_output = nn.Linear(
             config.n_heads * self.head_dim, config.dim, bias=False
         )
@@ -328,7 +339,7 @@ class Llama(LlamaPreTrainedModel):
         return idx
 
 
-def load_pretrained(checkpoint):
+def load_pretrained(checkpoint, lora=False):
     device = (
         "cuda" if torch.cuda.is_available() else "cpu"
     )  # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1', etc.
@@ -353,7 +364,7 @@ def load_pretrained(checkpoint):
 
     # init from a model saved in a specific directory
     checkpoint_dict = torch.load(checkpoint, map_location=device)
-    config = LlamaConfig(**checkpoint_dict["model_args"])
+    config = LlamaConfig(**checkpoint_dict["model_args"], lora=lora)
     model = Llama(config)
     state_dict = checkpoint_dict["model"]
     unwanted_prefix = "_orig_mod."
@@ -362,3 +373,9 @@ def load_pretrained(checkpoint):
             state_dict[k[len(unwanted_prefix) :]] = state_dict.pop(k)
     model.load_state_dict(state_dict, strict=False)
     return model
+
+
+def load_lora(model, checkpoint):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    checkpoint_dict = torch.load(checkpoint, map_location=device)
+    model.load_state_dict(checkpoint_dict["model"], strict=False)

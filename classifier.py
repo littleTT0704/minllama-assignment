@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from config import LlamaConfig
 from llama import load_pretrained
 from tokenizer import Tokenizer
+import loralib as lora
 
 
 class LlamaZeroShotClassifier(torch.nn.Module):
@@ -43,13 +44,16 @@ class LlamaEmbeddingClassifier(torch.nn.Module):
     def __init__(self, config):
         super(LlamaEmbeddingClassifier, self).__init__()
         self.num_labels = config.num_labels
-        self.llama = load_pretrained(config.pretrained_model_path)
+        self.llama = load_pretrained(config.pretrained_model_path, config.lora)
         # If we use pretrain mode, we freeze Llama parameters.
-        for param in self.llama.parameters():
-            if config.option == "pretrain":
-                param.requires_grad = False
-            elif config.option == "finetune":
-                param.requires_grad = True
+        if config.lora:
+            lora.mark_only_lora_as_trainable(self.llama)
+        else:
+            for param in self.llama.parameters():
+                if config.option == "pretrain":
+                    param.requires_grad = False
+                elif config.option == "finetune":
+                    param.requires_grad = True
 
         self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         self.classifier_head = torch.nn.Linear(self.llama.config.dim, self.num_labels)
