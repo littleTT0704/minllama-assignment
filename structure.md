@@ -29,7 +29,7 @@ This is the Llama model that takes in input ids and returns next-token predictio
 1. an embedding layer that consists of token embeddings ```tok_embeddings```.
 2. llama encoder layer which is a stack of ```config.num_hidden_layers``` ```LlamaLayer```
 3. a projection layer for each hidden state which predicts token IDs (for next-word prediction)
-4. a "generate" function which uses temperature sampling to generate long continuation strings
+4. a "generate" function which uses temperature sampling to generate long continuation strings. Note that, unlike most practical implementations of temperature sampling, you should not perform nucleus/top-k sampling in your sampling procedure.
 
 The desired outputs are
 1. ```logits```: logits (output scores) over the vocabulary, predicting the next possible token at each point
@@ -76,7 +76,7 @@ There are a few slight variations on AdamW, pleae note the following:
 You can check your optimizer implementation using `optimizer_test.py`.
 
 ## rope.py (to be implemented)
-Here, you will implement rotary positional embeddings. This may be tricky; you can refer to slide 22 in https://phontron.com/class/anlp2024/assets/slides/anlp-05-transformers.pdf and https://blog.eleuther.ai/rotary-embeddings/ for reference. To enable you to test this component modularly, we've provided a unit test at `RoPE_test.py`
+Here, you will implement rotary positional embeddings. This may be tricky; you can refer to slide 22 in https://phontron.com/class/anlp2024/assets/slides/anlp-05-transformers.pdf and Section 3 in https://arxiv.org/abs/2104.09864 for reference. To enable you to test this component modularly, we've provided a unit test at `RoPE_test.py`
 
 ## base_llama.py
 This is the base class for the Llama model. You won't need to modify this file in this assignment.
