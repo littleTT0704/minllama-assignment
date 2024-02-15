@@ -15,7 +15,8 @@ from optimizer import AdamW
 from tokenizer import Tokenizer
 from tqdm import tqdm
 from typing import Optional
-
+import pickle
+import matplotlib.pyplot as plt
 
 TQDM_DISABLE=False
 # fix the random seed
@@ -314,8 +315,10 @@ def test_wise_ft(args):
 		shift_dataset = LlamaDataset(shift_data, args)
 		shift_dataloader = DataLoader(shift_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=shift_dataset.collate_fn)
 
-		acc = []
-		for alpha in np.linspace(0, 1, 11):
+		origin_acces = []
+		shift_acces = []
+		alphas = np.linspace(0, 1, 11)
+		for alpha in alphas:
 			theta = {
 				k: alpha * finetune['model'][k] + (1 - alpha) * zeroshot['model'][k]
 				for k in finetune['model']
@@ -323,13 +326,23 @@ def test_wise_ft(args):
 			model.load_state_dict(theta)
 			model.to(device)
 
-			origen_acc = model_eval(origin_dataloader, model, device)[0]
+			origin_acc = model_eval(origin_dataloader, model, device)[0]
 			shift_acc = model_eval(shift_dataloader, model, device)[0]
 
-			print(f"{alpha:.1f} * finetuned + {1-alpha:.1f} * zeroshot: origin acc: {origen_acc:.3f}, shift acc: {shift_acc:.3f}")
-			acc.append((alpha, origen_acc, shift_acc))
+			print(f"{alpha:.1f} * finetuned + {1-alpha:.1f} * zeroshot: origin acc: {origin_acc:.3f}, shift acc: {shift_acc:.3f}")
+			origin_acces.append(origin_acc)
+			shift_acces.append(shift_acc)
+		
+		with open(args.output, "wb") as f:
+			pickle.dump({"alpha": alphas, "origin": origin_acces, "shift": shift_acces}, f)
 
+		origin_dataset, shift_dataset, _ = args.output.split("-")
 
+		plt.figure(figsize=(8, 8), dpi=300)
+		plt.plot(origin_acc, shift_acc)
+		plt.xlabel(f"{origin_dataset} accuracy")
+		plt.ylabel(f"{shift_dataset} accuracy")
+		plt.savefig(f"{origin_dataset}-{shift_dataset}-wiseft.png")
 
 def get_args():
 	parser = argparse.ArgumentParser()
