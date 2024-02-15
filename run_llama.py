@@ -297,6 +297,40 @@ def test(args):
 		write_predictions_to_file("dev", args.dev_out, dev_acc, dev_pred, dev_sents)
 		write_predictions_to_file("test", args.test_out, test_acc, test_pred, test_sents)
 
+def test_wise_ft(args):
+	with torch.no_grad():
+		device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+		finetune = torch.load(args.finetuned_model_path)
+		zeroshot = torch.load(args.zeroshot_model_path)
+		config = finetune['model_config']
+		model = LlamaEmbeddingClassifier(config)
+
+		tokenizer = Tokenizer(args.max_sentence_len)
+		origin_data = create_data(args.origin_dev, tokenizer, 'valid')
+		origin_dataset = LlamaDataset(origin_data, args)
+		origin_dataloader = DataLoader(origin_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=origin_dataset.collate_fn)
+
+		shift_data = create_data(args.shift_dev, tokenizer, 'valid')
+		shift_dataset = LlamaDataset(shift_data, args)
+		shift_dataloader = DataLoader(shift_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=shift_dataset.collate_fn)
+
+		acc = []
+		for alpha in np.linspace(0, 1, 11):
+			theta = {
+				k: alpha * finetune['model'][k] + (1 - alpha) * zeroshot['model'][k]
+				for k in finetune['model']
+			}
+			model.load_state_dict(theta)
+			model.to(device)
+
+			origen_acc = model_eval(origin_dataloader, model, device)[0]
+			shift_acc = model_eval(shift_dataloader, model, device)[0]
+
+			print(f"{alpha:.1f} * finetuned + {1-alpha:.1f} * zeroshot: origin acc: {origen_acc:.3f}, shift acc: {shift_acc:.3f}")
+			acc.append((alpha, origen_acc, shift_acc))
+
+
+
 def get_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--train", type=str, default="data/cfimdb-train.txt")
@@ -309,7 +343,7 @@ def get_args():
 	parser.add_argument("--epochs", type=int, default=5)
 	parser.add_argument("--option", type=str,
 						help='prompt: the Llama parameters are frozen; finetune: Llama parameters are updated',
-						choices=('generate', 'prompt', 'finetune'), default="generate")
+						choices=('generate', 'prompt', 'finetune', 'pretrain', 'wiseft'), default="generate")
 	parser.add_argument("--use_gpu", action='store_true')
 	parser.add_argument("--generated_sentence_low_temp_out", type=str, default="generated-sentence-temp-0.txt")
 	parser.add_argument("--generated_sentence_high_temp_out", type=str, default="generated-sentence-temp-1.txt")
@@ -321,6 +355,12 @@ def get_args():
 	parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
 	parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
 						default=2e-5)
+	
+	# WiSE-FT
+	parser.add_argument("--finetuned_model_path", type=str, default="sst-finetune-5-2e-05.pt")
+	parser.add_argument("--zeroshot_model_path", type=str, default="sst-pretrain-5-2e-05.pt")
+	parser.add_argument("--origin_dev", type=str, default="data/sst-dev-subset.txt")
+	parser.add_argument("--shift_dev", type=str, default="data/cfimdb-dev.txt")
 
 	args = parser.parse_args()
 	print(f"args: {vars(args)}")
@@ -342,6 +382,8 @@ if __name__ == "__main__":
 		# Solve this task with prompted language modeling
 		test_with_prompting(args)
 	elif args.option == "finetune":
+		dataset = args.train.split("/")[-1].split("-")[0]
+		args.filepath = dataset + "-" + args.filepath
 		# Step 3
 		# Finetune a classification model
 		train(args)
@@ -349,5 +391,19 @@ if __name__ == "__main__":
 		# Step 4
 		# Evaluate your model on the dev and test sets
 		test(args)
+	elif args.option == "pretrain":
+		dataset = args.train.split("/")[-1].split("-")[0]
+		args.filepath = dataset + "-" + args.filepath
+		train(args)
+	elif args.option == "wiseft":
+		zeroshot_dataset = args.zeroshot_model_path.split("-")[0]
+		finetune_dataset = args.finetuned_model_path.split("-")[0]
+		origin_dataset = args.origin_dev.split("/")[-1].split("-")[0]
+		shift_dataset = args.shift_dev.split("/")[-1].split("-")[0]
+		assert zeroshot_dataset == finetune_dataset, f"zeroshot model {args.zeroshot_model_path} and finetune model {args.finetuned_model_path} are trained on different datasets"
+		assert zeroshot_dataset == origin_dataset, f"models {args.zeroshot_model_path} are not trained on origin dev set {args.origin_dev}"
+
+		args.output = f"{origin_dataset}-{shift_dataset}-wiseft.pkl"
+		test_wise_ft(args)
 	else:
 		raise ValueError(f"Invalid option: {args.option}")
