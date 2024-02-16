@@ -92,7 +92,11 @@ class Attention(nn.Module):
         self.dropout = config.dropout
 
     def compute_query_key_value_scores(
-        self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+        self,
+        query: torch.Tensor,
+        key: torch.Tensor,
+        value: torch.Tensor,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Jointly compute Scaled Dot Product Attention (see Section 3.2.1 in
@@ -105,13 +109,16 @@ class Attention(nn.Module):
         attention matrix before applying it to the value tensor.
         """
         score = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.shape[-1])
+        if mask is not None:
+            mask = mask.reshape(mask.shape[0], 1, 1, -1).expand_as(score)
+            score = score.masked_fill(mask, -1e9)
         attention = F.softmax(score, dim=-1)
         attention = self.attn_dropout(attention)
 
         output = torch.matmul(attention, value)
         return output
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None):
         """
         Llama2 uses Grouped-Query Attention. The details of GQA are actually
         not critical to solving this assignment; you are simply asked to
@@ -143,7 +150,7 @@ class Attention(nn.Module):
         query = query.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
-        output = self.compute_query_key_value_scores(query, key, value)
+        output = self.compute_query_key_value_scores(query, key, value, mask)
 
         # restore time as batch dimension and concat heads
         output = output.transpose(1, 2).contiguous().view(batch_size, seqlen, -1)
@@ -193,7 +200,7 @@ class LlamaLayer(nn.Module):
         self.attention_norm = RMSNorm(config.dim, eps=config.layer_norm_eps)
         self.ffn_norm = RMSNorm(config.dim, eps=config.layer_norm_eps)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         """
         This is the forward pass of the basic transformer building block. This is a
         modernized version of the block shown on the left of Figure 1 on
@@ -211,7 +218,7 @@ class LlamaLayer(nn.Module):
         # layer norm
         attention_norm = self.attention_norm(x)
         # self-attention
-        attention = x + self.attention(attention_norm)
+        attention = x + self.attention(attention_norm, mask)
         # layer norm
         ffn_norm = self.ffn_norm(attention)
         # feed-forward network
@@ -263,14 +270,17 @@ class Llama(LlamaPreTrainedModel):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(
-        self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None
+        self,
+        tokens: torch.Tensor,
+        targets: Optional[torch.Tensor] = None,
+        mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         _batch_size, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         h = self.dropout(h)
 
         for layer in self.layers:
-            h = layer(h)
+            h = layer(h, mask)
         h = self.norm(h)
 
         if targets is not None:

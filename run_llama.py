@@ -30,11 +30,12 @@ def seed_everything(seed=11711):
 
 # create a custom Dataset Class to be used for the dataloader
 class LlamaDataset(Dataset):
-	def __init__(self, dataset, args, eos=False):
+	def __init__(self, dataset, args, eos=False, left=False):
 		self.dataset = dataset
 		self.p = args
 		self.tokenizer = Tokenizer(max_len=args.max_sentence_len)
 		self.eos = eos
+		self.left = left
 
 	def __len__(self):
 		return len(self.dataset)
@@ -48,19 +49,26 @@ class LlamaDataset(Dataset):
 		labels = [x[1] for x in data]
 		encoding = [self.tokenizer.encode(s, bos=True, eos=self.eos) for s in sents]
 		max_length_in_batch = max([len(sentence) for sentence in encoding])
-		encoding_padded = [sentence + [self.tokenizer.pad_id] * (max_length_in_batch - len(sentence)) for sentence in encoding]
+		if self.left:
+			encoding_padded = [([self.tokenizer.pad_id] * (max_length_in_batch - len(sentence)) + sentence) for sentence in encoding]
+			mask = [[0] * (max_length_in_batch - len(sentence)) + [1] * len(sentence) for sentence in encoding]
+		else:
+			encoding_padded = [sentence + [self.tokenizer.pad_id] * (max_length_in_batch - len(sentence)) for sentence in encoding]
+			mask = [[1] * len(sentence) + [0] * (max_length_in_batch - len(sentence)) for sentence in encoding]
+		mask = torch.LongTensor(mask)
 		token_ids = torch.LongTensor(encoding_padded)
 		labels = torch.LongTensor(labels)
 
-		return token_ids, labels, sents
+		return token_ids, labels, sents, mask
 
 	def collate_fn(self, all_data):
 
-		token_ids, labels, sents = self.pad_data(all_data)
+		token_ids, labels, sents, mask = self.pad_data(all_data)
 		batched_data = {
 				'token_ids': token_ids,
 				'labels': labels,
 				'sents': sents,
+				'mask': mask,
 			}
 
 		return batched_data
@@ -170,13 +178,16 @@ def train(args):
 		train_loss = 0
 		num_batches = 0
 		for step, batch in enumerate(tqdm(train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE)):
-			b_ids, b_labels, b_sents = batch['token_ids'], batch['labels'], batch['sents']
+			b_ids, b_labels, b_sents, b_masks = batch['token_ids'], batch['labels'], batch['sents'], batch['mask']
 
 			b_ids = b_ids.to(device)
 			b_labels = b_labels.to(device)
 
 			optimizer.zero_grad()
-			logits = model(b_ids)
+			if args.mask:
+				logits = model(b_ids, b_masks.to(device))
+			else:
+				logits = model(b_ids)
 			loss = F.nll_loss(logits, b_labels.view(-1), reduction='sum') / args.batch_size
 
 			loss.backward()
@@ -258,11 +269,11 @@ def test_with_prompting(args):
 		model = model.to(device)
 
 		dev_data = create_data(args.dev, tokenizer, 'valid', eos=False, prompt_suffix=prompt_suffix)
-		dev_dataset = LlamaDataset(dev_data, args, eos=False)
+		dev_dataset = LlamaDataset(dev_data, args, eos=False, left=args.mask)
 		dev_dataloader = DataLoader(dev_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=dev_dataset.collate_fn)
 
 		test_data = create_data(args.test, tokenizer, 'test', eos=False, prompt_suffix=prompt_suffix)
-		test_dataset = LlamaDataset(test_data, args, eos=False)
+		test_dataset = LlamaDataset(test_data, args, eos=False, left=args.mask)
 		test_dataloader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size, collate_fn=test_dataset.collate_fn)
 
 		dev_acc, dev_f1, dev_pred, dev_true, dev_sents = model_eval(dev_dataloader, model, device)
@@ -321,6 +332,7 @@ def get_args():
 	parser.add_argument("--hidden_dropout_prob", type=float, default=0.3)
 	parser.add_argument("--lr", type=float, help="learning rate, default lr for 'pretrain': 1e-3, 'finetune': 1e-5",
 						default=2e-5)
+	parser.add_argument("--mask", action='store_true')
 
 	args = parser.parse_args()
 	print(f"args: {vars(args)}")
