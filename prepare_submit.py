@@ -46,6 +46,18 @@ packed_files = {
     "cfimdb-test-prompting-output.txt",
     "cfimdb-dev-finetuning-output.txt",
     "cfimdb-test-finetuning-output.txt",
+    "mask-sst-dev-prompting-output.txt",
+    "mask-sst-test-prompting-output.txt",
+    "mask-cfimdb-dev-prompting-output.txt",
+    "mask-cfimdb-test-prompting-output.txt",
+    "left-sst-dev-prompting-output.txt",
+    "left-sst-test-prompting-output.txt",
+    "left-cfimdb-dev-prompting-output.txt",
+    "left-cfimdb-test-prompting-output.txt",
+    "mask-leftsst-dev-prompting-output.txt",
+    "mask-leftsst-test-prompting-output.txt",
+    "mask-leftcfimdb-dev-prompting-output.txt",
+    "mask-leftcfimdb-test-prompting-output.txt",
     "setup.sh",
 }
 

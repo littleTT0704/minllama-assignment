@@ -107,6 +107,8 @@ class Attention(nn.Module):
 
         Make sure to use attention_dropout (self.attn_dropout) on the computed
         attention matrix before applying it to the value tensor.
+
+        Here we are only masking the key columns in the score.
         """
         score = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(query.shape[-1])
         if mask is not None:
