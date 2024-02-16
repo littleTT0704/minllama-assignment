@@ -357,6 +357,12 @@ if __name__ == "__main__":
 	elif args.option == "prompt":
 		# Step 2
 		# Solve this task with prompted language modeling
+		if args.left:
+			args.dev_out = "left-" + args.dev_out
+			args.test_out = "left-" + args.test_out
+		if args.mask:
+			args.dev_out = "mask-" + args.dev_out
+			args.test_out = "mask-" + args.test_out
 		test_with_prompting(args)
 	elif args.option == "finetune":
 		# Step 3
