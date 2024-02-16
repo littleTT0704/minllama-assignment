@@ -54,13 +54,13 @@ class LlamaDataset(Dataset):
 		if self.left:
 			encoding_padded = [([self.tokenizer.pad_id] * (max_length_in_batch - len(sentence)) + sentence) for sentence in encoding]
 			if self.mask:
-				mask = [[0] * (max_length_in_batch - len(sentence)) + [1] * len(sentence) for sentence in encoding]
-				mask = torch.LongTensor(mask)
+				mask = [[1] * (max_length_in_batch - len(sentence)) + [0] * len(sentence) for sentence in encoding]
+				mask = torch.BoolTensor(mask)
 		else:
 			encoding_padded = [sentence + [self.tokenizer.pad_id] * (max_length_in_batch - len(sentence)) for sentence in encoding]
 			if self.mask:
-				mask = [[1] * len(sentence) + [0] * (max_length_in_batch - len(sentence)) for sentence in encoding]
-				mask = torch.LongTensor(mask)
+				mask = [[0] * len(sentence) + [1] * (max_length_in_batch - len(sentence)) for sentence in encoding]
+				mask = torch.BoolTensor(mask)
 		token_ids = torch.LongTensor(encoding_padded)
 		labels = torch.LongTensor(labels)
 
