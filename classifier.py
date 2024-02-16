@@ -23,9 +23,9 @@ class LlamaZeroShotClassifier(torch.nn.Module):
             tokenizer.encode(label, bos=False, eos=False) for label in label_names
         ]
 
-    def forward(self, input_ids):
+    def forward(self, input_ids, mask=None):
         # compute the completion probability of each label string
-        logits, _ = self.llama(input_ids)
+        logits, _ = self.llama(input_ids, mask)
         log_probabilities = F.log_softmax(logits, dim=-1)
         label_probabilities = torch.zeros(
             (log_probabilities.shape[0], self.num_labels),
